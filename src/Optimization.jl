@@ -4,41 +4,55 @@
 using IntervalArithmetic
 using IntervalOptimisation
 using IntervalConstraintProgramming
+using ModelingToolkit
 
-function minimize(f, constraints, X, Y, catalog; structure = HeapedVector, tolerance=1e-6) where {T}
-    # list of boxes with corresponding lower bound, arranged according to selected structure :
-    queue = structure([(X, Y, -∞)], x -> x[3])
-    upper_bound = ∞  # upper bound
+# evaluate at midpoint of current box
+function compute_objective_upper_bound(objective, box)
+    midpoint = Interval.(mid.(box))
+    midpoint_objective = sup(objective(midpoint))   
+    return (midpoint, midpoint_objective)
+end
 
-    num_bisections = 0
+function minimize(objective, constraints, initial_domain; structure = HeapedVector, tolerance=1e-6, verbose=false) where {T}
+    # list of boxes with corresponding lower bound, arranged according to selected structure
+    queue = structure([(initial_domain, inf(objective(initial_domain)))], x -> x[2])
+    
+    # keep track of best known solution
+    best_solution = nothing
+    best_objective_upper_bound = ∞
+
+    number_bisections = 0
     while !isempty(queue)
-        (X, Y, parent_lower_bound) = popfirst!(queue)
-        println("Current box: ", X)
-        if upper_bound - tolerance < parent_lower_bound
+        # exploration
+        (box, objective_lower_bound) = popfirst!(queue)
+        verbose && println("Current box: ", box, " with objective lower bound: ", objective_lower_bound)
+        
+        # pruning
+        if best_objective_upper_bound - tolerance < objective_lower_bound
             continue
         end
         
-        # lower bounding
-        current_lower_bound = inf(f(X, Y))
-        if upper_bound - tolerance < current_lower_bound
-            continue
-        end
-
-        # CLUTCH filtering: filter inconsistent values wrt the constraints
-        # catalog lookup: reduce the categorical variables to the convex hull of the catalog items in Y
-
         # upper bounding: if a feasible point is available, update the best known upper bound
-        m = sup(f(Interval.(mid.(X)), Y))   # evaluate at midpoint of current interval
-        if m < upper_bound
-            upper_bound = m
+        (feasible_point, feasible_point_objective_upper_bound) = compute_objective_upper_bound(objective, box)
+        if feasible_point_objective_upper_bound < best_objective_upper_bound
+            best_solution = feasible_point
+            best_objective_upper_bound = feasible_point_objective_upper_bound
+            verbose && println("Best objective upper bound improved: ", best_objective_upper_bound)
         end
 
-        # CLUTCH branching
-        for Xi in bisect(X)
-            # catalog lookup and reduce Y
-            push!(queue, (Xi, Y, current_lower_bound))
+        # branching
+        for subbox in bisect(box)
+            # filtering
+            # TODO
+            
+            # lower bounding
+            subbox_objective_lower_bound = inf(objective(box))
+            if best_objective_upper_bound - tolerance < subbox_objective_lower_bound
+                continue
+            end
+            push!(queue, (subbox, subbox_objective_lower_bound))
         end
-        num_bisections += 1
+        number_bisections += 1
     end
-    return upper_bound
+    return (best_solution, best_objective_upper_bound)
 end
