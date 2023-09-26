@@ -13,8 +13,7 @@ function compute_objective_upper_bound(objective, constraints, box, verbose)
     
     # test feasibility wrt the constraints
     for constraint in constraints
-        constraint_value = constraint.constraint_function(midpoint_interval)
-        if !issubset(constraint_value, constraint.range)
+        if !is_point_feasible(midpoint_interval, constraint)
             verbose && println("Midpoint is infeasible")
             return nothing
         end
@@ -26,6 +25,8 @@ function compute_objective_upper_bound(objective, constraints, box, verbose)
 end
 
 function filter_constraints(objective_contractor, constraint_contractors, box, objective_bound)
+    # TODO fixed point
+
     # objective
     box = objective_contractor(-∞..objective_bound, box)
     if isempty(box)
@@ -58,6 +59,7 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
         
         # pruning
         if best_objective_upper_bound - tolerance < objective_lower_bound
+            verbose && println("Current box pruned")
             continue
         end
         
@@ -77,12 +79,14 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
             # filtering
             subbox = filter_constraints(objective_contractor, constraint_contractors, subbox, best_objective_upper_bound - tolerance)
             if isempty(subbox)
+                verbose && println("Subbox empty after filtering")
                 continue
             end
             
             # lower bounding
             subbox_objective_lower_bound = inf(objective(subbox))
             if best_objective_upper_bound - tolerance < subbox_objective_lower_bound
+                verbose && println("Subbox pruned")
                 continue
             end
             push!(queue, (subbox, subbox_objective_lower_bound))

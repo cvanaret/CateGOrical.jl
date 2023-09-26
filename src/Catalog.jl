@@ -1,8 +1,8 @@
 # Copyright (c) 2023 Charlie Vanaret
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
 
-struct Catalog
+struct Catalog{TypeProperties <: Real, NumberItems}
     name::String
     properties_names::Array{String,1}
-    properties::Array{Tuple{Float64,Float64},1}
+    items::Array{Array{TypeProperties, NumberItems},1}
 end
