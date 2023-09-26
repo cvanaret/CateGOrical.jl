@@ -14,7 +14,7 @@ function compute_objective_upper_bound(objective, constraints, box, verbose)
     # test feasibility wrt the constraints
     for constraint in constraints
         if !is_point_feasible(midpoint_interval, constraint)
-            verbose && println("Midpoint is infeasible")
+            verbose && println("Midpoint ", midpoint, " is infeasible")
             return nothing
         end
     end
@@ -44,6 +44,8 @@ function filter_constraints(objective_contractor, constraint_contractors, box, o
 end
 
 function minimize(objective, objective_contractor, constraints, constraint_contractors, initial_domain; structure = HeapedVector, tolerance=1e-6, verbose=false)
+    initial_domain = filter_constraints(objective_contractor, constraint_contractors, initial_domain, +∞)
+
     # list of boxes with corresponding lower bound, arranged according to selected structure
     queue = structure([(initial_domain, inf(objective(initial_domain)))], tuple -> tuple[2])
     
@@ -59,7 +61,7 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
         
         # pruning
         if best_objective_upper_bound - tolerance < objective_lower_bound
-            verbose && println("Current box pruned")
+            verbose && println("Current box pruned by objective test")
             continue
         end
         
@@ -74,21 +76,29 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
             end
         end
 
+        # termination
+        if diam(box) == 0.
+            continue
+        end
+        
         # branching
         for subbox in bisect(box)
+            verbose && print("  Current subbox: ", subbox)
+            
             # filtering
             subbox = filter_constraints(objective_contractor, constraint_contractors, subbox, best_objective_upper_bound - tolerance)
             if isempty(subbox)
-                verbose && println("Subbox empty after filtering")
+                verbose && println(" pruned by filtering")
                 continue
             end
             
             # lower bounding
             subbox_objective_lower_bound = inf(objective(subbox))
             if best_objective_upper_bound - tolerance < subbox_objective_lower_bound
-                verbose && println("Subbox pruned")
+                verbose && println(" pruned")
                 continue
             end
+            verbose && println(" contracted to ", subbox)
             push!(queue, (subbox, subbox_objective_lower_bound))
         end
         number_bisections += 1
