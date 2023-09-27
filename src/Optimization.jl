@@ -27,8 +27,9 @@ function select_point_in_box(box, point, catalog_constraint::CatalogConstraint{T
     end
 end
 
-# evaluate at midpoint of current box
+# find a feasible point in the current box and compute an upper bound of the objective
 function compute_objective_upper_bound(objective, constraints, box, verbose)
+    # select a point in the box: make sure that catalog properties always correspond to a catalog item. Other components are set to the box midpoint
     point = mid.(box)
     for constraint in constraints
         point = select_point_in_box(box, point, constraint)
@@ -38,13 +39,13 @@ function compute_objective_upper_bound(objective, constraints, box, verbose)
     # test feasibility wrt the constraints
     for constraint in constraints
         if !is_point_feasible(point_interval, constraint)
-            verbose && println("Selected point ", point, " is infeasible")
-            return nothing
+            verbose && println("  Selected point ", point, " is infeasible")
+            return (nothing, +∞)
         end
     end
     
     # if the point is feasible, evaluate its objective value
-    verbose && println("Selected point ", point, " is feasible")
+    verbose && println("  Selected point ", point, " is feasible")
     point_objective = objective(point_interval)
     return (point, sup(point_objective))
 end
@@ -69,7 +70,10 @@ function filter_constraints(objective_contractor, constraint_contractors, box, o
 end
 
 function minimize(objective, objective_contractor, constraints, constraint_contractors, initial_domain; structure = HeapedVector, tolerance=1e-6, verbose=false)
+    # filter the initial domain
+    verbose && print("Initial domain ", initial_domain)
     initial_domain = filter_constraints(objective_contractor, constraint_contractors, initial_domain, +∞)
+    verbose && println(" filtered to ", initial_domain)
 
     # list of boxes with corresponding lower bound, arranged according to selected structure
     queue = structure([(initial_domain, inf(objective(initial_domain)))], tuple -> tuple[2])
@@ -79,6 +83,7 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
     best_objective_upper_bound = +∞
 
     number_bisections = 0
+    verbose && println("--- Starting branch and bound ---")
     while !isempty(queue)
         # exploration
         (box, objective_lower_bound) = popfirst!(queue)
@@ -91,14 +96,11 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
         end
         
         # upper bounding: if a feasible point is found, update the best known upper bound
-        optional_feasible_point = compute_objective_upper_bound(objective, constraints, box, verbose)
-        if optional_feasible_point != nothing
-            (feasible_point, feasible_point_objective_upper_bound) = optional_feasible_point
-            if feasible_point_objective_upper_bound < best_objective_upper_bound
-                best_solution = feasible_point
-                best_objective_upper_bound = feasible_point_objective_upper_bound
-                verbose && println("Best objective upper bound improved: ", best_objective_upper_bound)
-            end
+        (feasible_point, objective_upper_bound) = compute_objective_upper_bound(objective, constraints, box, verbose)
+        if objective_upper_bound < best_objective_upper_bound
+            best_solution = feasible_point
+            best_objective_upper_bound = objective_upper_bound
+            verbose && println("Best objective upper bound improved: ", best_objective_upper_bound)
         end
 
         # termination
@@ -106,8 +108,8 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
             continue
         end
         
-        # branching
-        for subbox in bisect(box)
+        # branching: (default) branch in the center of the largest component
+        for subbox in bisect(box, 0.5)
             verbose && print("  Current subbox: ", subbox)
             
             # filtering
@@ -120,7 +122,7 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
             # lower bounding
             subbox_objective_lower_bound = inf(objective(subbox))
             if best_objective_upper_bound - tolerance < subbox_objective_lower_bound
-                verbose && println(" pruned")
+                verbose && println(" pruned by objective test")
                 continue
             end
             verbose && println(" contracted to ", subbox)
