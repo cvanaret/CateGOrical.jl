@@ -6,32 +6,41 @@ using IntervalConstraintProgramming
 using IntervalOptimisation: HeapedVector
 using ModelingToolkit
 
-function select_point_in_box(box, point, constraint::GeneralConstraint{FunctionType}) where {FunctionType}
-    # do not do anything
-    return point
+function collapse_categorical_properties(box, catalog_feasible_box, constraint::GeneralConstraint{FunctionType}) where {FunctionType}
+    # nothing to do
+    return catalog_feasible_box
 end
 
-function select_point_in_box(box, point, catalog_constraint::CatalogConstraint{TypeProperties, NumberItems}) where {TypeProperties, NumberItems}
-    # find first catalog item that is in the box
+function collapse_categorical_properties(box, catalog_feasible_box, catalog_constraint::CatalogConstraint{TypeProperties, NumberItems}) where {TypeProperties, NumberItems}
+    # find first catalog item that is in the box (should exist)
     for item in catalog_constraint.catalog.items
         if item in IntervalBox(box[catalog_constraint.property_indices])
             # set the properties to this item
             for (item_component, property_index) in enumerate(catalog_constraint.property_indices)
                 # update the components of the result
-                point = setindex(point, item[item_component], property_index)
+                catalog_feasible_box = setindex(catalog_feasible_box, Interval(item[item_component]), property_index)
             end
-            return point
+            return catalog_feasible_box
         end
     end
 end
 
 # find a feasible point in the current box and compute an upper bound of the objective
 function compute_objective_upper_bound(objective, constraints, box, verbose)
-    # select a point in the box: make sure that catalog properties always correspond to a catalog item. Other components are set to the box midpoint
-    point = mid.(box)
+    # start with the initial box
+    catalog_feasible_box = IntervalBox(box)
+    # collapse the categorical properties by picking a catalog item in box
     for constraint in constraints
-        point = select_point_in_box(box, point, constraint)
+        catalog_feasible_box = collapse_categorical_properties(box, catalog_feasible_box, constraint)
     end
+    # use constraint propagation to reduce the continuous variables
+    catalog_feasible_box = filter_constraints(objective_contractor, constraint_contractors, catalog_feasible_box, +∞)
+    if isempty(catalog_feasible_box)
+        return (nothing, +∞)
+    end
+    
+    # pick the midpoint of this box
+    point = mid.(catalog_feasible_box)
     point_interval = Interval.(point)
     
     # test feasibility wrt the constraints
@@ -87,18 +96,18 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
         (box, objective_lower_bound) = popfirst!(queue)
         verbose && println("Current box: ", box, " with objective lower bound: ", objective_lower_bound)
         
-        # pruning
-        if best_objective_upper_bound - tolerance < objective_lower_bound
-            verbose && println("Current box pruned by objective test")
-            continue
-        end
-        
         # upper bounding: if a feasible point is found, update the best known upper bound
         (feasible_point, objective_upper_bound) = compute_objective_upper_bound(objective, constraints, box, verbose)
         if objective_upper_bound < best_objective_upper_bound
             best_solution = feasible_point
             best_objective_upper_bound = objective_upper_bound
-            verbose && println("Best objective upper bound improved: ", best_objective_upper_bound)
+            verbose && println("  Best objective upper bound improved: ", best_objective_upper_bound)
+        end
+        
+        # pruning
+        if best_objective_upper_bound - tolerance < objective_lower_bound
+            verbose && println("  Pruned by objective test")
+            continue
         end
 
         # termination
@@ -107,6 +116,7 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
         end
         
         # branching: (default) branch in the center of the largest component
+        verbose && println("  Branching")
         for subbox in bisect(box, 0.5)
             verbose && print("  Current subbox: ", subbox)
             
