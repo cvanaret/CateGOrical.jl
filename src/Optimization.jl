@@ -16,11 +16,9 @@ function select_point_in_box(box, point, catalog_constraint::CatalogConstraint{T
     for item in catalog_constraint.catalog.items
         if item in IntervalBox(box[catalog_constraint.property_indices])
             # set the properties to this item
-            item_component = 1
-            for property_index in catalog_constraint.property_indices
+            for (item_component, property_index) in enumerate(catalog_constraint.property_indices)
                 # update the components of the result
                 point = setindex(point, item[item_component], property_index)
-                item_component = item_component + 1
             end
             return point
         end

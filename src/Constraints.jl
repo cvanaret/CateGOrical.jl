@@ -34,12 +34,10 @@ function create_constraint_contractor(catalog_constraint::CatalogConstraint{Type
         for item in catalog_constraint.catalog.items
             if item in IntervalBox(box[catalog_constraint.property_indices])
                 # perform convex hull for each property
-                item_component = 1
-                for property_index in catalog_constraint.property_indices
+                for (item_component, property_index) in enumerate(catalog_constraint.property_indices)
                     # update the components of the result
                     new_component = filtered_box[property_index] ∪ Interval(item[item_component])
                     filtered_box = setindex(filtered_box, new_component, property_index)
-                    item_component = item_component + 1
                 end
             end
         end
@@ -54,6 +52,6 @@ function is_point_feasible(x, constraint::GeneralConstraint{FunctionType}) where
 end
 
 function is_point_feasible(x, constraint::CatalogConstraint{TypeProperties, NumberItems}) where {TypeProperties, NumberItems}
-    # TODO
+    # by construction, this is always true
     return true
 end
