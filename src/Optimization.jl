@@ -6,22 +6,47 @@ using IntervalConstraintProgramming
 using IntervalOptimisation: HeapedVector
 using ModelingToolkit
 
+function select_point_in_box(box, point, constraint::GeneralConstraint{FunctionType}) where {FunctionType}
+    # do not do anything
+    return point
+end
+
+function select_point_in_box(box, point, catalog_constraint::CatalogConstraint{TypeProperties, NumberItems}) where {TypeProperties, NumberItems}
+    # find first catalog item that is in the box
+    for item in catalog_constraint.catalog.items
+        if item in IntervalBox(box[catalog_constraint.property_indices])
+            # set the properties to this item
+            item_component = 1
+            for property_index in catalog_constraint.property_indices
+                # update the components of the result
+                point = setindex(point, item[item_component], property_index)
+                item_component = item_component + 1
+            end
+            return point
+        end
+    end
+end
+
 # evaluate at midpoint of current box
 function compute_objective_upper_bound(objective, constraints, box, verbose)
-    midpoint = mid.(box)
-    midpoint_interval = Interval.(midpoint)
+    point = mid.(box)
+    for constraint in constraints
+        point = select_point_in_box(box, point, constraint)
+    end
+    point_interval = Interval.(point)
     
     # test feasibility wrt the constraints
     for constraint in constraints
-        if !is_point_feasible(midpoint_interval, constraint)
-            verbose && println("Midpoint ", midpoint, " is infeasible")
+        if !is_point_feasible(point_interval, constraint)
+            verbose && println("Selected point ", point, " is infeasible")
             return nothing
         end
     end
     
-    # if the midpoint is feasible, evaluate its objective value
-    midpoint_objective = objective(midpoint_interval)
-    return (midpoint, sup(midpoint_objective))
+    # if the point is feasible, evaluate its objective value
+    verbose && println("Selected point ", point, " is feasible")
+    point_objective = objective(point_interval)
+    return (point, sup(point_objective))
 end
 
 function filter_constraints(objective_contractor, constraint_contractors, box, objective_bound)

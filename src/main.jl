@@ -30,4 +30,8 @@ constraint_contractors = [
 ]
 
 # compute the global minimum and one of the minimizers
-(best_solution, best_objective_upper_bound, number_bisections) = minimize(objective, objective_contractor, constraints, constraint_contractors, initial_domain; tolerance=1e-3, verbose=true)
+(approximate_minimizer, approximate_minimum, number_bisections) = minimize(objective, objective_contractor, constraints, constraint_contractors, initial_domain; tolerance=1e-3, verbose=true)
+println("---------------------------------------------------")
+println("Global minimizer: ", approximate_minimizer)
+println("Global minimum: ", approximate_minimum)
+println("Number of bisections: ", number_bisections)

@@ -24,16 +24,21 @@ end
 function create_constraint_contractor(catalog_constraint::CatalogConstraint{TypeProperties, NumberItems}, variables) where {TypeProperties, NumberItems}
     # TODO: ugly but works
     function clutch_contractor(box)
+        # filtered_box will receive the convex hull of all catalog items that are present in box
         filtered_box = IntervalBox(box)
         for property_index in catalog_constraint.property_indices
             filtered_box = setindex(filtered_box, ∅, property_index)
         end
+        
+        # determine if catalog items belong to the current box
         for item in catalog_constraint.catalog.items
             if item in IntervalBox(box[catalog_constraint.property_indices])
                 # perform convex hull for each property
                 item_component = 1
                 for property_index in catalog_constraint.property_indices
-                    filtered_box = setindex(filtered_box, filtered_box[property_index] ∪ Interval(item[item_component]), property_index)
+                    # update the components of the result
+                    new_component = filtered_box[property_index] ∪ Interval(item[item_component])
+                    filtered_box = setindex(filtered_box, new_component, property_index)
                     item_component = item_component + 1
                 end
             end
