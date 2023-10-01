@@ -17,10 +17,10 @@ catalog = Catalog("example_scenario1",
     [19., -8.]])
 constraints = [
     GeneralConstraint(x -> x[1] - x[3]^2 - 2*x[2], 0..0),
-    CatalogConstraint(catalog, [2, 3])
+    CatalogConstraint(catalog, [2, 3]) # indices of the property variables
 ]
 
-# create contractors here to avoid world age problem
+# create contractors here to avoid world age problem (of course, you want this automatically done)
 variables = @variables x[1:length(initial_domain)]
 variables = vcat(variables...)
 objective_contractor = Contractor(variables, objective(variables))

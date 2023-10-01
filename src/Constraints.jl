@@ -8,8 +8,8 @@ struct GeneralConstraint{FunctionType <: Function}
     range::Interval{Float64}
 end
 
-struct CatalogConstraint{TypeProperties <: Real, NumberItems}
-    catalog::Catalog{TypeProperties, NumberItems}
+struct CatalogConstraint{PropertyTypes <: Real, NumberItems}
+    catalog::Catalog{PropertyTypes, NumberItems}
     property_indices::Array{Int64,1}
 end
 
@@ -18,12 +18,16 @@ function create_constraint_contractor(constraint::GeneralConstraint{FunctionType
     contractor = Contractor(variables, constraint.constraint_function(variables))
     
     # capture the constraint range
-    return box -> contractor(constraint.range, box)
+    function hc4revise(box; verbose=false)
+        filtered_box = contractor(constraint.range, box)
+        verbose && println("  Filtering on general constraint: ", filtered_box)
+        return filtered_box
+    end
+    return hc4revise
 end
 
-function create_constraint_contractor(catalog_constraint::CatalogConstraint{TypeProperties, NumberItems}, variables) where {TypeProperties, NumberItems}
-    # TODO: ugly but works
-    function clutch_contractor(box)
+function create_constraint_contractor(catalog_constraint::CatalogConstraint{PropertyTypes, NumberItems}, variables) where {PropertyTypes, NumberItems}
+    function clutch_contractor(box; verbose=false)
         # filtered_box will receive the convex hull of all catalog items that are present in box
         filtered_box = IntervalBox(box)
         for property_index in catalog_constraint.property_indices
@@ -41,17 +45,20 @@ function create_constraint_contractor(catalog_constraint::CatalogConstraint{Type
                 end
             end
         end
+        verbose && println("  Filtering on categorical constraint: ", filtered_box)
         return filtered_box
     end
     return clutch_contractor
 end
 
+# return true if constraint(x) is in the admissible range, false otherwise
 function is_point_feasible(x, constraint::GeneralConstraint{FunctionType}) where {FunctionType}
     constraint_value = constraint.constraint_function(x)
     return issubset(constraint_value, constraint.range)
 end
 
-function is_point_feasible(x, constraint::CatalogConstraint{TypeProperties, NumberItems}) where {TypeProperties, NumberItems}
+# by construction, the selected point is always catalog feasible
+function is_point_feasible(x, constraint::CatalogConstraint{PropertyTypes, NumberItems}) where {PropertyTypes, NumberItems}
     # by construction, this is always true
     return true
 end

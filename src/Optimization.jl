@@ -11,7 +11,7 @@ function collapse_categorical_properties(box, catalog_feasible_box, constraint::
     return catalog_feasible_box
 end
 
-function collapse_categorical_properties(box, catalog_feasible_box, catalog_constraint::CatalogConstraint{TypeProperties, NumberItems}) where {TypeProperties, NumberItems}
+function collapse_categorical_properties(box, catalog_feasible_box, catalog_constraint::CatalogConstraint{PropertyTypes, NumberItems}) where {PropertyTypes, NumberItems}
     # find first catalog item that is in the box (should exist)
     for item in catalog_constraint.catalog.items
         if item in IntervalBox(box[catalog_constraint.property_indices])
@@ -26,7 +26,7 @@ function collapse_categorical_properties(box, catalog_feasible_box, catalog_cons
 end
 
 # find a feasible point in the current box and compute an upper bound of the objective
-function compute_objective_upper_bound(objective, constraints, box, verbose)
+function compute_objective_upper_bound(objective, constraints, box; verbose=False)
     # start with the initial box
     catalog_feasible_box = IntervalBox(box)
     # collapse the categorical properties by picking a catalog item in box
@@ -34,7 +34,7 @@ function compute_objective_upper_bound(objective, constraints, box, verbose)
         catalog_feasible_box = collapse_categorical_properties(box, catalog_feasible_box, constraint)
     end
     # use constraint propagation to reduce the continuous variables
-    catalog_feasible_box = filter_constraints(objective_contractor, constraint_contractors, catalog_feasible_box, +∞)
+    catalog_feasible_box = filter_constraints(objective_contractor, constraint_contractors, catalog_feasible_box, +∞; verbose=false)
     if isempty(catalog_feasible_box)
         return (nothing, +∞)
     end
@@ -57,18 +57,21 @@ function compute_objective_upper_bound(objective, constraints, box, verbose)
     return (point, sup(point_objective))
 end
 
-function filter_constraints(objective_contractor, constraint_contractors, box, objective_bound)
+function filter_constraints(objective_contractor, constraint_contractors, box, objective_bound; verbose=False)
     # TODO fixed point
 
     # objective
-    box = objective_contractor(-∞..objective_bound, box)
-    if isempty(box)
-        return box
+    if objective_bound < +∞
+        box = objective_contractor(-∞..objective_bound, box)
+        verbose && println("  Filtering on objective: ", box)
+        if isempty(box)
+            return box
+        end
     end
     
     # constraints
     for constraint_contractor in constraint_contractors
-        box = constraint_contractor(box)
+        box = constraint_contractor(box; verbose)
         if isempty(box)
             return box
         end
@@ -78,9 +81,9 @@ end
 
 function minimize(objective, objective_contractor, constraints, constraint_contractors, initial_domain; structure = HeapedVector, tolerance=1e-6, verbose=false)
     # filter the initial domain
-    verbose && print("Initial domain ", initial_domain)
-    initial_domain = filter_constraints(objective_contractor, constraint_contractors, initial_domain, +∞)
-    verbose && println(" filtered to ", initial_domain)
+    verbose && println("Initial domain: ", initial_domain)
+    initial_domain = filter_constraints(objective_contractor, constraint_contractors, initial_domain, +∞; verbose)
+    verbose && println("Filtered domain: ", initial_domain)
 
     # list of boxes with corresponding lower bound, arranged according to selected structure
     queue = structure([(initial_domain, inf(objective(initial_domain)))], tuple -> tuple[2])
@@ -90,14 +93,14 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
     best_objective_upper_bound = +∞
 
     number_bisections = 0
-    verbose && println("--- Starting branch and bound ---")
+    verbose && println("\n--- Starting branch and bound ---")
     while !isempty(queue)
         # exploration
         (box, objective_lower_bound) = popfirst!(queue)
-        verbose && println("Current box: ", box, " with objective lower bound: ", objective_lower_bound)
+        verbose && println("\nCurrent box: ", box, " with objective lower bound: ", objective_lower_bound)
         
         # upper bounding: if a feasible point is found, update the best known upper bound
-        (feasible_point, objective_upper_bound) = compute_objective_upper_bound(objective, constraints, box, verbose)
+        (feasible_point, objective_upper_bound) = compute_objective_upper_bound(objective, constraints, box; verbose)
         if objective_upper_bound < best_objective_upper_bound
             best_solution = feasible_point
             best_objective_upper_bound = objective_upper_bound
@@ -118,22 +121,22 @@ function minimize(objective, objective_contractor, constraints, constraint_contr
         # branching: (default) branch in the center of the largest component
         verbose && println("  Branching")
         for subbox in bisect(box, 0.5)
-            verbose && print("  Current subbox: ", subbox)
+            verbose && println("  * Current subbox: ", subbox)
             
             # filtering
-            subbox = filter_constraints(objective_contractor, constraint_contractors, subbox, best_objective_upper_bound - tolerance)
+            subbox = filter_constraints(objective_contractor, constraint_contractors, subbox, best_objective_upper_bound - tolerance; verbose)
             if isempty(subbox)
-                verbose && println(" pruned by filtering")
+                verbose && println("  Subbox pruned by filtering")
                 continue
             end
             
             # lower bounding
             subbox_objective_lower_bound = inf(objective(subbox))
             if best_objective_upper_bound - tolerance < subbox_objective_lower_bound
-                verbose && println(" pruned by objective test")
+                verbose && println(" Subbox pruned by objective test")
                 continue
             end
-            verbose && println(" contracted to ", subbox)
+            verbose && println("  Filtered subbox: ", subbox)
             push!(queue, (subbox, subbox_objective_lower_bound))
         end
         number_bisections += 1
