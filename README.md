@@ -3,7 +3,7 @@
 ## What is Categorical.jl?
 
 Categorical.jl is a Julia prototype for solving mixed categorical optimization problems to global optimality. It implements:
-* an interval branch-and-contract method that interleaves branching and constraint propagation phases. It is based on rigorous interval techniques that are robust to roundoff errors;  
+* an interval branch-and-contract method that interleaves branching and constraint propagation phases on continuous domains. It is based on rigorous interval techniques that are robust to roundoff errors;  
 * a new contractor called Clutch that handles catalog constraints (aka table constraints).
 
 ## Run an example
